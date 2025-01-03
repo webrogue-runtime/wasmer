@@ -14,15 +14,12 @@ use object::{
     FileFlags, RelocationEncoding, RelocationKind, SectionKind, SymbolFlags, SymbolKind,
     SymbolScope,
 };
-use wasmer_types::entity::PrimaryMap;
-use wasmer_types::{
-    Architecture, BinaryFormat, Compilation, CustomSectionProtection, Endianness,
-    RelocationKind as Reloc, RelocationTarget, SectionIndex, Triple,
-};
-use wasmer_types::{LocalFunctionIndex, PointerWidth};
-use wasmer_types::{Symbol, SymbolRegistry};
-
-struct MReloc(wasmer_types::Relocation, Option<object::write::SymbolId>);
+use target_lexicon::PointerWidth;
+use wasmer_types::{entity::PrimaryMap, LocalFunctionIndex};
+struct MReloc(
+    crate::types::relocation::Relocation,
+    Option<object::write::SymbolId>,
+);
 
 const DWARF_SECTION_NAME: &[u8] = b".eh_frame";
 
@@ -330,7 +327,7 @@ pub fn emit_compilation(
         append_usize(function_bodies.len(), triple, &mut serialized_data);
         for (local_function_entry, _) in function_symbol_ids.clone() {
             relocations.push(MReloc {
-                0: wasmer_types::Relocation {
+                0: crate::types::relocation::Relocation {
                     kind: reloc_kind,
                     reloc_target: RelocationTarget::LocalFunc(local_function_entry),
                     offset: serialized_data.len() as _,
@@ -348,7 +345,7 @@ pub fn emit_compilation(
         for symbol in function_call_trampoline_symbols {
             // compilation.custom_sections
             relocations.push(MReloc {
-                0: wasmer_types::Relocation {
+                0: crate::types::relocation::Relocation {
                     kind: reloc_kind,
                     reloc_target: RelocationTarget::CustomSection(SectionIndex::from_u32(0)),
                     offset: serialized_data.len() as _,
@@ -365,7 +362,7 @@ pub fn emit_compilation(
         );
         for symbol in dynamic_function_trampoline_symbols {
             relocations.push(MReloc {
-                0: wasmer_types::Relocation {
+                0: crate::types::relocation::Relocation {
                     kind: reloc_kind,
                     reloc_target: RelocationTarget::CustomSection(SectionIndex::from_u32(0)),
                     offset: serialized_data.len() as _,
