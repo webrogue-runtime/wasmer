@@ -65,11 +65,11 @@ pub fn path_rename_internal(
 
     {
         let source_fd = wasi_try_ok!(state.fs.get_fd(source_fd));
-        if !source_fd.rights.contains(Rights::PATH_RENAME_SOURCE) {
+        if !source_fd.inner.rights.contains(Rights::PATH_RENAME_SOURCE) {
             return Ok(Errno::Access);
         }
         let target_fd = wasi_try_ok!(state.fs.get_fd(target_fd));
-        if !target_fd.rights.contains(Rights::PATH_RENAME_TARGET) {
+        if !target_fd.inner.rights.contains(Rights::PATH_RENAME_TARGET) {
             return Ok(Errno::Access);
         }
     }
@@ -106,7 +106,9 @@ pub fn path_rename_internal(
             }
             Kind::Root { .. } => return Ok(Errno::Notcapable),
             Kind::Socket { .. }
-            | Kind::Pipe { .. }
+            | Kind::PipeTx { .. }
+            | Kind::PipeRx { .. }
+            | Kind::DuplexPipe { .. }
             | Kind::EventNotifications { .. }
             | Kind::Epoll { .. } => return Ok(Errno::Inval),
             Kind::Symlink { .. } | Kind::File { .. } | Kind::Buffer { .. } => {
@@ -124,7 +126,9 @@ pub fn path_rename_internal(
             }
             Kind::Root { .. } => return Ok(Errno::Notcapable),
             Kind::Socket { .. }
-            | Kind::Pipe { .. }
+            | Kind::PipeRx { .. }
+            | Kind::PipeTx { .. }
+            | Kind::DuplexPipe { .. }
             | Kind::EventNotifications { .. }
             | Kind::Epoll { .. } => {
                 return Ok(Errno::Inval);
@@ -190,7 +194,9 @@ pub fn path_rename_internal(
             Kind::Buffer { .. }
             | Kind::Symlink { .. }
             | Kind::Socket { .. }
-            | Kind::Pipe { .. }
+            | Kind::PipeTx { .. }
+            | Kind::PipeRx { .. }
+            | Kind::DuplexPipe { .. }
             | Kind::Epoll { .. }
             | Kind::EventNotifications { .. } => {}
             Kind::Root { .. } => unreachable!("The root can not be moved"),

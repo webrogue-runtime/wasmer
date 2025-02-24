@@ -126,7 +126,7 @@ fn dwarf_index(reg: u16) -> gimli::Register {
     match reg {
         0..=15 => DWARF_GPR[reg as usize],
         17..=24 => DWARF_XMM[reg as usize - 17],
-        _ => panic!("Unknown register index {}", reg),
+        _ => panic!("Unknown register index {reg}"),
     }
 }
 
@@ -2433,10 +2433,7 @@ impl Machine for MachineX86_64 {
                     }
                 }
             },
-            _ => panic!(
-                "unimplemented move_location_extend({:?}, {}, {:?}, {:?}, {:?}",
-                size_val, signed, source, size_op, dest
-            ),
+            _ => panic!(                "unimplemented move_location_extend({size_val:?}, {signed}, {source:?}, {size_op:?}, {dest:?}"            ),
         }?;
         if dst != dest {
             self.assembler.emit_mov(size_op, dst, dest)?;
@@ -2508,7 +2505,7 @@ impl Machine for MachineX86_64 {
     // assembler finalize
     fn assembler_finalize(self) -> Result<Vec<u8>, CompileError> {
         self.assembler.finalize().map_err(|e| {
-            CompileError::Codegen(format!("Assembler failed finalization with: {:?}", e))
+            CompileError::Codegen(format!("Assembler failed finalization with: {e:?}"))
         })
     }
 
@@ -7977,7 +7974,7 @@ impl Machine for MachineX86_64 {
             let mut stack_param_count: usize = 0;
 
             for (i, ty) in sig.params().iter().enumerate() {
-                let source_loc = match argalloc.next(*ty, calling_convention) {
+                let source_loc = match argalloc.next(*ty, calling_convention)? {
                     Some(X64Register::GPR(gpr)) => Location::GPR(gpr),
                     Some(X64Register::XMM(xmm)) => Location::SIMD(xmm),
                     None => {
@@ -8113,7 +8110,7 @@ impl Machine for MachineX86_64 {
                     let mut argalloc = ArgumentRegisterAllocator::default();
                     for (i, ty) in sig.params().iter().enumerate() {
                         let prev_loc = param_locations[i];
-                        match argalloc.next(*ty, calling_convention) {
+                        match argalloc.next(*ty, calling_convention)? {
                             Some(X64Register::GPR(_gpr)) => continue,
                             Some(X64Register::XMM(xmm)) => {
                                 a.emit_mov(Size::S64, prev_loc, Location::SIMD(xmm))?
@@ -8158,11 +8155,11 @@ impl Machine for MachineX86_64 {
 
                     // Copy arguments.
                     let mut argalloc = ArgumentRegisterAllocator::default();
-                    argalloc.next(Type::I64, calling_convention).unwrap(); // skip VMContext
+                    argalloc.next(Type::I64, calling_convention)?.unwrap(); // skip VMContext
                     let mut caller_stack_offset: i32 = 0;
                     for (i, ty) in sig.params().iter().enumerate() {
                         let prev_loc = param_locations[i];
-                        let targ = match argalloc.next(*ty, calling_convention) {
+                        let targ = match argalloc.next(*ty, calling_convention)? {
                             Some(X64Register::GPR(gpr)) => Location::GPR(gpr),
                             Some(X64Register::XMM(xmm)) => Location::SIMD(xmm),
                             None => {

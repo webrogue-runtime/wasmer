@@ -7,11 +7,12 @@ pub use inkwell::OptimizationLevel as LLVMOptLevel;
 use itertools::Itertools;
 use std::fmt::Debug;
 use std::sync::Arc;
+use target_lexicon::BinaryFormat;
 use wasmer_compiler::{
     types::target::{Architecture, OperatingSystem, Target, Triple},
     Compiler, CompilerConfig, Engine, EngineBuilder, ModuleMiddleware,
 };
-use wasmer_types::{FunctionType, LocalFunctionIndex};
+use wasmer_types::{Features, FunctionType, LocalFunctionIndex};
 
 /// The InkWell ModuleInfo type
 pub type InkwellModule<'ctx> = inkwell::module::Module<'ctx>;
@@ -77,7 +78,11 @@ impl LLVM {
         self
     }
 
-    fn reloc_mode(&self) -> RelocMode {
+    fn reloc_mode(&self, binary_format: BinaryFormat) -> RelocMode {
+        if matches!(binary_format, BinaryFormat::Macho) {
+            return RelocMode::Static;
+        }
+
         if self.is_pic {
             RelocMode::PIC
         } else {
@@ -85,16 +90,50 @@ impl LLVM {
         }
     }
 
-    fn code_model(&self) -> CodeModel {
+    fn code_model(&self, binary_format: BinaryFormat) -> CodeModel {
         // We normally use the large code model, but when targeting shared
         // objects, we are required to use PIC. If we use PIC anyways, we lose
         // any benefit from large code model and there's some cost on all
         // platforms, plus some platforms (MachO) don't support PIC + large
         // at all.
+        if matches!(binary_format, BinaryFormat::Macho) {
+            return CodeModel::Default;
+        }
+
         if self.is_pic {
             CodeModel::Small
         } else {
             CodeModel::Large
+        }
+    }
+
+    pub(crate) fn target_operating_system(&self, target: &Target) -> OperatingSystem {
+        if target.triple().operating_system == OperatingSystem::Darwin && !self.is_pic {
+            // LLVM detects static relocation + darwin + 64-bit and
+            // force-enables PIC because MachO doesn't support that
+            // combination. They don't check whether they're targeting
+            // MachO, they check whether the OS is set to Darwin.
+            //
+            // Since both linux and darwin use SysV ABI, this should work.
+            //  but not in the case of Aarch64, there the ABI is slightly different
+            #[allow(clippy::match_single_binding)]
+            match target.triple().architecture {
+                Architecture::Aarch64(_) => OperatingSystem::Darwin,
+                _ => OperatingSystem::Linux,
+            }
+        } else {
+            target.triple().operating_system
+        }
+    }
+
+    pub(crate) fn target_binary_format(&self, target: &Target) -> target_lexicon::BinaryFormat {
+        if self.is_pic {
+            target.triple().binary_format
+        } else {
+            match self.target_operating_system(target) {
+                OperatingSystem::Darwin => target_lexicon::BinaryFormat::Macho,
+                _ => target_lexicon::BinaryFormat::Elf,
+            }
         }
     }
 
@@ -109,29 +148,9 @@ impl LLVM {
         // Hack: we're using is_pic to determine whether this is a native
         // build or not.
 
-        let operating_system =
-            if target.triple().operating_system == OperatingSystem::Darwin && !self.is_pic {
-                // LLVM detects static relocation + darwin + 64-bit and
-                // force-enables PIC because MachO doesn't support that
-                // combination. They don't check whether they're targeting
-                // MachO, they check whether the OS is set to Darwin.
-                //
-                // Since both linux and darwin use SysV ABI, this should work.
-                //  but not in the case of Aarch64, there the ABI is slightly different
-                #[allow(clippy::match_single_binding)]
-                match target.triple().architecture {
-                    Architecture::Aarch64(_) => OperatingSystem::Darwin,
-                    _ => OperatingSystem::Linux,
-                }
-            } else {
-                target.triple().operating_system
-            };
+        let operating_system = self.target_operating_system(target);
+        let binary_format = self.target_binary_format(target);
 
-        let binary_format = if self.is_pic {
-            target.triple().binary_format
-        } else {
-            target_lexicon::BinaryFormat::Elf
-        };
         let triple = Triple {
             architecture,
             vendor: target.triple().vendor.clone(),
@@ -200,7 +219,7 @@ impl LLVM {
         // are compliant with the same string representations as gcc.
         let llvm_cpu_features = cpu_features
             .iter()
-            .map(|feature| format!("+{}", feature))
+            .map(|feature| format!("+{feature}"))
             .join(",");
 
         let target_triple = self.target_triple(target);
@@ -219,10 +238,10 @@ impl LLVM {
                     _ => &llvm_cpu_features,
                 },
                 self.opt_level,
-                self.reloc_mode(),
+                self.reloc_mode(self.target_binary_format(target)),
                 match triple.architecture {
                     Architecture::LoongArch64 | Architecture::Riscv64(_) => CodeModel::Medium,
-                    _ => self.code_model(),
+                    _ => self.code_model(self.target_binary_format(target)),
                 },
             )
             .unwrap();
@@ -288,6 +307,12 @@ impl CompilerConfig for LLVM {
     /// Pushes a middleware onto the back of the middleware chain.
     fn push_middleware(&mut self, middleware: Arc<dyn ModuleMiddleware>) {
         self.middlewares.push(middleware);
+    }
+
+    fn default_features_for_target(&self, _target: &Target) -> wasmer_types::Features {
+        let mut feats = Features::default();
+        feats.exceptions(true);
+        feats
     }
 }
 

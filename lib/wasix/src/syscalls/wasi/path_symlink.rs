@@ -61,7 +61,7 @@ pub fn path_symlink_internal(
     let (memory, mut state, inodes) = unsafe { env.get_memory_and_wasi_state_and_inodes(&ctx, 0) };
 
     let base_fd = state.fs.get_fd(fd)?;
-    if !base_fd.rights.contains(Rights::PATH_SYMLINK) {
+    if !base_fd.inner.rights.contains(Rights::PATH_SYMLINK) {
         return Err(Errno::Access);
     }
 
@@ -95,7 +95,9 @@ pub fn path_symlink_internal(
             }
             Kind::Root { .. } => return Err(Errno::Notcapable),
             Kind::Socket { .. }
-            | Kind::Pipe { .. }
+            | Kind::PipeRx { .. }
+            | Kind::PipeTx { .. }
+            | Kind::DuplexPipe { .. }
             | Kind::EventNotifications { .. }
             | Kind::Epoll { .. } => return Err(Errno::Inval),
             Kind::File { .. } | Kind::Symlink { .. } | Kind::Buffer { .. } => {
