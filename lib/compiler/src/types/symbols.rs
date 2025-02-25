@@ -150,7 +150,7 @@ impl ModuleMetadata {
         archived: &ArchivedModuleMetadata,
     ) -> Result<Self, DeserializeError> {
         rkyv::deserialize::<_, rkyv::rancor::Error>(archived)
-            .map_err(|e| DeserializeError::CorruptedBinary(format!("{:?}", e)))
+            .map_err(|e| DeserializeError::CorruptedBinary(format!("{e:?}")))
     }
 }
 

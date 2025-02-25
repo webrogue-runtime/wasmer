@@ -2,16 +2,15 @@
 
 mod healthcheck;
 mod http;
+mod job;
+mod pretty_duration;
 
-pub use self::{
-    healthcheck::{HealthCheckHttpV1, HealthCheckV1},
-    http::HttpRequest,
-};
-
-use std::collections::HashMap;
+pub use self::{healthcheck::*, http::*, job::*};
 
 use anyhow::{bail, Context};
 use bytesize::ByteSize;
+use indexmap::IndexMap;
+use pretty_duration::PrettyDuration;
 
 use crate::package::PackageSource;
 
@@ -65,8 +64,8 @@ pub struct AppConfigV1 {
     pub locality: Option<Locality>,
 
     /// Environment variables.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub env: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub env: IndexMap<String, String>,
 
     // CLI arguments passed to the runner.
     /// Only applicable for runners that accept CLI arguments.
@@ -95,9 +94,12 @@ pub struct AppConfigV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redirect: Option<Redirect>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jobs: Option<Vec<Job>>,
+
     /// Capture extra fields for forwards compatibility.
     #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    pub extra: IndexMap<String, serde_json::Value>,
 }
 
 #[derive(
@@ -205,7 +207,7 @@ pub struct AppConfigCapabilityMapV1 {
     /// This provides a small bit of forwards compatibility for newly added
     /// capabilities.
     #[serde(flatten)]
-    pub other: HashMap<String, serde_json::Value>,
+    pub other: IndexMap<String, serde_json::Value>,
 }
 
 /// Memory capability settings.
@@ -255,7 +257,7 @@ pub struct AppConfigCapabilityInstaBootV1 {
     /// After the specified time new snapshots will be created, and the old
     /// ones discarded.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_age: Option<String>,
+    pub max_age: Option<PrettyDuration>,
 }
 
 /// App redirect configuration.
@@ -341,7 +343,8 @@ scheduled_tasks:
                 }),
                 locality: Some(Locality {
                     regions: vec!["eu-rome".to_string()]
-                })
+                }),
+                jobs: None,
             }
         );
     }
@@ -374,10 +377,7 @@ volumes:
         if let Some(actual_volumes) = parsed.volumes {
             assert_eq!(actual_volumes, expected_volumes);
         } else {
-            panic!(
-                "Parsed volumes are None, expected Some({:?})",
-                expected_volumes
-            );
+            panic!("Parsed volumes are None, expected Some({expected_volumes:?})");
         }
     }
 }
